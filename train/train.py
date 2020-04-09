@@ -5,6 +5,7 @@ import time
 import glob
 import logging
 from tqdm import tqdm
+import argparse
 
 import torch
 import torch.nn as nn
@@ -31,15 +32,74 @@ from test import SegTester
 from utils.darts_utils import create_exp_dir, save, plot_op, plot_path_width, objective_acc_lat
 from model_seg import Network_Multi_Path_Infer as Network
 import seg_metrics
+import torch.backends.cudnn as cudnn
 
-
+try:
+    from apex.parallel import DistributedDataParallel as DDP
+    from apex.fp16_utils import *
+    from apex import amp, optimizers
+    from apex.multi_tensor_apply import multi_tensor_applier
+except ImportError:
+    raise ImportError("Please install apex from https://www.github.com/nvidia/apex to run this example.")
 
 def adjust_learning_rate(base_lr, power, optimizer, epoch, total_epoch):
     for param_group in optimizer.param_groups:
         param_group['lr'] = param_group['lr'] * power
 
+def parse():
+
+    parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
+    parser.add_argument("--local_rank", default=0, type=int)
+    parser.add_argument('--sync_bn', action='store_true',
+                        help='enabling apex sync BN.', default=True)
+    parser.add_argument('--opt-level', type=str, default='O1')
+    parser.add_argument('--keep-batchnorm-fp32', type=str, default=None)
+    parser.add_argument('--loss-scale', type=str, default="dynamic")
+    parser.add_argument('--channels-last', type=bool, default=False)
+    args = parser.parse_args()
+    return args
+
+
+def reduce_tensor(tensor):
+    rt = tensor.clone()
+    torch.distributed.all_reduce(rt, op=torch.distributed.ReduceOp.SUM)
+    rt /= args.world_size
+    return rt
+
+
 
 def main():
+    global args
+    args = parse()
+    if args.channels_last:
+        memory_format = torch.channels_last
+    else:
+        memory_format = torch.contiguous_format
+
+    if config.deterministic:
+        cudnn.benchmark = False
+        cudnn.deterministic = True
+        torch.manual_seed(config.seed)
+        torch.set_printoptions(precision=10)
+        np.random.seed(config.seed)
+
+    args.distributed = False
+
+    if 'WORLD_SIZE' in os.environ:
+        args.distributed = int(os.environ['WORLD_SIZE']) > 1
+
+
+    args.world_size = 1
+
+    if args.distributed:
+        args.gpu = args.local_rank
+        torch.cuda.set_device(args.gpu)
+        torch.distributed.init_process_group(backend='nccl',
+                                             init_method='env://')
+        args.world_size = torch.distributed.get_world_size()
+
+    assert torch.backends.cudnn.enabled, "Amp requires cudnn backend to be enabled."
+
     create_exp_dir(config.save, scripts_to_save=glob.glob('*.py')+glob.glob('*.sh'))
     logger = SummaryWriter(config.save)
 
@@ -50,13 +110,13 @@ def main():
     logging.getLogger().addHandler(fh)
     logging.info("args = %s", str(config))
     # preparation ################
-    torch.backends.cudnn.enabled = True
-    torch.backends.cudnn.benchmark = True
-    seed = config.seed
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
+    # torch.backends.cudnn.enabled = True
+    # torch.backends.cudnn.benchmark = True
+    # seed = config.seed
+    # np.random.seed(seed)
+    # torch.manual_seed(seed)
+    # if torch.cuda.is_available():
+    #     torch.cuda.manual_seed(seed)
 
     # config network and criterion ################
     min_kept = int(config.batch_size * config.image_height * config.image_width // (16 * config.gt_down_sampling ** 2))
@@ -79,7 +139,7 @@ def main():
                         'test_source': config.test_source,
                         'down_sampling': config.down_sampling}
 
-    train_loader = get_train_loader(config, Cityscapes, test=config.is_test)
+    train_loader, train_sampler = get_train_loader(config, Cityscapes, test=config.is_test)
 
 
     # Model #######################################
@@ -148,7 +208,27 @@ def main():
         if arch_idx == 1 or len(config.arch_idx) == 1:
             # optimize teacher solo OR student (w. distill from teacher)
             optimizer = torch.optim.SGD(model.parameters(), lr=base_lr, momentum=config.momentum, weight_decay=config.weight_decay)
+        if args.sync_bn:
+            import apex
+            print("using apex synced BN")
+            model = apex.parallel.convert_syncbn_model(model)
         models.append(model)
+
+    model, optimizer = amp.initialize(models, optimizer,
+                                      opt_level=args.opt_level,
+                                      keep_batchnorm_fp32=args.keep_batchnorm_fp32,
+                                      loss_scale=args.loss_scale
+                                      )
+    if args.distributed:
+        # By default, apex.parallel.DistributedDataParallel overlaps communication with
+        # computation in the backward pass.
+        # model = DDP(model)
+        # delay_allreduce delays all communication to the end of the backward pass.
+        for i in range(len(model)):
+            # models[i] = torch.nn.parallel.DistributedDataParallel(models[i],
+            #                                                       device_ids=[args.local_rank],
+            #                                                       output_device=config.local_rank)
+            models[i] = DDP(models[i], delay_allreduce=True)
 
 
     # Cityscapes ###########################################
@@ -177,6 +257,8 @@ def main():
 
     tbar = tqdm(range(config.nepochs), ncols=80)
     for epoch in tbar:
+        if train_sampler:
+            train_sampler.set_epoch(epoch)
         logging.info(config.load_path)
         logging.info(config.save)
         logging.info("lr: " + str(optimizer.param_groups[0]['lr']))
@@ -233,8 +315,18 @@ def train(train_loader, models, criterion, distill_criterion, optimizer, logger,
     lamb = 0.2
     for step in pbar:
         optimizer.zero_grad()
+        # try:
+        #     minibatch = next(dataloader)
+        # except StopIteration:
+        #     batch_iterator = iter(dataloader)
+        #     minibatch = next(batch_iterator)
+        minibatch = None
+        try:
+            minibatch = dataloader.next()
+        except:
+            dataloader = iter(train_loader)
+            minibatch = dataloader.next()
 
-        minibatch = dataloader.next()
         imgs = minibatch['data']
         target = minibatch['label']
         imgs = imgs.cuda(non_blocking=True)
@@ -258,14 +350,20 @@ def train(train_loader, models, criterion, distill_criterion, optimizer, logger,
                 loss = loss + lamb * criterion(logits32, target)
                 if len(logits_list) > 1:
                     loss = loss + distill_criterion(F.softmax(logits_list[1], dim=1).log(), F.softmax(logits_list[0], dim=1))
+            # reduced_loss = None
+            # if args.distributed:
+            #     reduced_loss = reduce_tensor(loss.data)
 
-            metrics[idx].update(logits8.data, target)
-            description += "[mIoU%d: %.3f]"%(arch_idx, metrics[idx].get_scores())
-
+            torch.cuda.synchronize()
+            if step % 10 == 0:
+                metrics[idx].update(logits8.data, target)
+                description += "[mIoU%d: %.3f]"%(arch_idx, metrics[idx].get_scores())
+        #
         pbar.set_description("[Step %d/%d]"%(step + 1, len(train_loader)) + description)
         logger.add_scalar('loss/train', loss+loss_kl, epoch*len(pbar)+step)
-
-        loss.backward()
+        with amp.scale_loss(loss, optimizer) as scaled_loss:
+            scaled_loss.backward()
+        # loss.backward()
         optimizer.step()
 
     return [ metric.get_scores() for metric in metrics ]
@@ -275,8 +373,8 @@ def infer(models, evaluators, logger):
     mIoUs = []
     for model, evaluator in zip(models, evaluators):
         model.eval()
-        # _, mIoU = evaluator.run_online()
-        _, mIoU = evaluator.run_online_multiprocess()
+        _, mIoU = evaluator.run_online()
+        # _, mIoU = evaluator.run_online_multiprocess()
         mIoUs.append(mIoU)
     return mIoUs
 

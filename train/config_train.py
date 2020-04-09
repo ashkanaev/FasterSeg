@@ -9,21 +9,40 @@ import sys
 import numpy as np
 from easydict import EasyDict as edict
 
+import os
+import os
+import torch
+
 C = edict()
 config = C
 cfg = C
 
 C.seed = 12345
 
+C.num_gpus =  torch.cuda.device_count()
+C.num_nodes = 0
+
+
+C.opt_level = 'O1'
+C.keep_batchnorm_fp32 = None
+C.loss_scale = "dynamic"
+C.deterministic = True
+C.local_rank = 0
+C.distributed = False
+C.gpu = 0
+C.world_size = 1
+C.sync_bn = False
+
+
 """please config ROOT_dir and user when u first using"""
 C.repo_name = 'FasterSeg'
-C.abs_dir = osp.realpath(".")
+C.abs_dir = '/work/FasterSeg/search/'
 C.this_dir = C.abs_dir.split(osp.sep)[-1]
 C.root_dir = C.abs_dir[:C.abs_dir.index(C.repo_name) + len(C.repo_name)]
 C.log_dir = osp.abspath(osp.join(C.root_dir, 'log', C.this_dir))
 
 """Data Dir"""
-C.dataset_path = "/ssd1/chenwy/cityscapes/"
+C.dataset_path = "/media/data/datasets/cityscape"
 C.img_root_folder = C.dataset_path
 C.gt_root_folder = C.dataset_path
 C.train_source = osp.join(C.dataset_path, "cityscapes_train_fine.txt")
@@ -59,7 +78,9 @@ C.momentum = 0.9
 C.weight_decay = 5e-4
 C.nepochs = 600
 C.niters_per_epoch = 1000
-C.num_workers = 6
+if 'WORLD_SIZE' in os.environ:
+    C.niters_per_epoch = int(C.niters_per_epoch / int(os.environ['WORLD_SIZE']))
+C.num_workers = 8
 C.train_scale_array = [0.75, 1, 1.25]
 
 """Eval Config"""
@@ -74,14 +95,14 @@ C.eval_width = 2048
 
 C.layers = 16
 """ Train Config """
-C.mode = "student" # "teacher" or "student"
+C.mode = "teacher" # "teacher" or "student"
 if C.mode == "teacher":
     ##### train teacher model only ####################################
     C.arch_idx = [0] # 0 for teacher
     C.branch = [2]
     C.width_mult_list = [4./12, 6./12, 8./12, 10./12, 1.,]
     C.stem_head_width = [(1, 1)]
-    C.load_path = "fasterseg" # path to the searched directory
+    C.load_path = "search-224x448_F12.L16_batch2-20200406-183345" # path to the searched directory
     C.load_epoch = "last" # "last" or "int" (e.g. "30"): which epoch to load from the searched architecture
     C.batch_size = 12
     C.Fch = 12

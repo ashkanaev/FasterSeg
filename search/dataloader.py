@@ -2,7 +2,7 @@ import cv2
 cv2.setNumThreads(0)
 from torch.utils import data
 
-from utils.img_utils import random_scale, random_mirror, normalize, generate_random_crop_pos, random_crop_pad_to_shape
+from tools.utils.img_utils import random_scale, random_mirror, normalize, generate_random_crop_pos, random_crop_pad_to_shape
 
 
 class TrainPre(object):

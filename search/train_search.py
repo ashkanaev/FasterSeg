@@ -20,14 +20,14 @@ from thop import profile
 
 from config_search import config
 from dataloader import get_train_loader
-from datasets import Cityscapes
+from tools.datasets import Cityscapes
 
-from utils.init_func import init_weight
-from seg_opr.loss_opr import ProbOhemCrossEntropy2d
+from tools.utils.init_func import init_weight
+from tools.seg_opr.loss_opr import ProbOhemCrossEntropy2d
 from eval import SegEvaluator
 
 from architect import Architect
-from utils.darts_utils import create_exp_dir, save, plot_op, plot_path_width, objective_acc_lat
+from tools.utils.darts_utils import create_exp_dir, save, plot_op, plot_path_width, objective_acc_lat
 from model_search import Network_Multi_Path as Network
 from model_seg import Network_Multi_Path_Infer
 

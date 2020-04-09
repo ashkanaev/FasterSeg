@@ -88,9 +88,10 @@ def create_exp_dir(path, scripts_to_save=None):
     print('Experiment dir : {}'.format(path))
 
     if scripts_to_save is not None:
-        os.mkdir(os.path.join(path, 'scripts'))
+        os.makedirs(os.path.join(path, 'scripts'), exist_ok=True)
         for script in scripts_to_save:
             dst_file = os.path.join(path, 'scripts', os.path.basename(script))
+            # os.makedirs(os.path.dirname(dst_file), exist_ok=True)
             shutil.copyfile(script, dst_file)
 
 ########################## TensorRT speed_test #################################

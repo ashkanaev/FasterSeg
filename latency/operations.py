@@ -22,10 +22,10 @@ def add_path(path):
 
 add_path(osp.join(C.root_dir, 'tools'))
 try:
-    from utils.darts_utils import compute_latency_ms_tensorrt as compute_latency
+    from tools.utils.darts_utils import compute_latency_ms_tensorrt as compute_latency
     print("use TensorRT for latency test")
 except:
-    from utils.darts_utils import compute_latency_ms_pytorch as compute_latency
+    from tools.utils.darts_utils import compute_latency_ms_pytorch as compute_latency
     print("use PyTorch for latency test")
 from slimmable_ops import USConv2d, USBatchNorm2d
 

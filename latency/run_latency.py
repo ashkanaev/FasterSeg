@@ -13,12 +13,12 @@ from thop import profile
 from config import config
 config.save = 'latency-{}-{}'.format(config.save, time.strftime("%Y%m%d-%H%M%S"))
 
-from utils.darts_utils import create_exp_dir, plot_op, plot_path_width, objective_acc_lat
+from tools.utils.darts_utils import create_exp_dir, plot_op, plot_path_width, objective_acc_lat
 try:
-    from utils.darts_utils import compute_latency_ms_tensorrt as compute_latency
+    from tools.utils.darts_utils import compute_latency_ms_tensorrt as compute_latency
     print("use TensorRT for latency test")
 except:
-    from utils.darts_utils import compute_latency_ms_pytorch as compute_latency
+    from tools.utils.darts_utils import compute_latency_ms_pytorch as compute_latency
     print("use PyTorch for latency test")
 
 from model_seg import Network_Multi_Path_Infer as Network
