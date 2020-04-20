@@ -15,8 +15,10 @@ cfg = C
 C.seed = 12345
 
 """please config ROOT_dir and user when u first using"""
-C.repo_name = 'FasterSeg'
-C.abs_dir = osp.realpath(".")
+C.repo_name = 'fasterseg'
+# C.repo_name = 'pycharm_project_477'
+C.abs_dir = osp.realpath(".") #'/media/ashkanaev/DATA/DEVREP/fasterseg/latency' #
+print(C.abs_dir)
 C.this_dir = C.abs_dir.split(osp.sep)[-1]
 C.root_dir = C.abs_dir[:C.abs_dir.index(C.repo_name) + len(C.repo_name)]
 

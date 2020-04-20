@@ -16,14 +16,14 @@ cfg = C
 C.seed = 12345
 
 """please config ROOT_dir and user when u first using"""
-C.repo_name = 'FasterSeg'
+C.repo_name = 'fasterseg'
 C.abs_dir = osp.realpath(".")
 C.this_dir = C.abs_dir.split(osp.sep)[-1]
 C.root_dir = C.abs_dir[:C.abs_dir.index(C.repo_name) + len(C.repo_name)]
 C.log_dir = osp.abspath(osp.join(C.root_dir, 'log', C.this_dir))
 
 """Data Dir"""
-C.dataset_path = "/ssd1/chenwy/cityscapes/"
+C.dataset_path = "/media/ashkanaev/DATA/datasets/cityscape/gtFine_trainvaltest"
 C.img_root_folder = C.dataset_path
 C.gt_root_folder = C.dataset_path
 C.train_source = osp.join(C.dataset_path, "cityscapes_train_fine.txt")
@@ -104,6 +104,6 @@ elif C.mode == "student":
     C.save = "%dx%d_student_batch%d"%(C.image_height, C.image_width, C.batch_size)
 
 ########################################
-C.is_test = False # if True, prediction files for the test set will be generated
+C.is_test = True # if True, prediction files for the test set will be generated
 C.is_eval = False # if True, the train.py will only do evaluation for once
 C.eval_path = "fasterseg" # path to pretrained directory to be evaluated
