@@ -22,12 +22,12 @@ C.this_dir = C.abs_dir.split(osp.sep)[-1]
 C.root_dir = C.abs_dir[:C.abs_dir.index(C.repo_name) + len(C.repo_name)]
 
 """Data Dir"""
-C.dataset_path = "/media/data/datasets/cityscape"
+C.dataset_path = "/media/ashkanaev/DATA/datasets/agro"
 C.img_root_folder = C.dataset_path
 C.gt_root_folder = C.dataset_path
-C.train_source = osp.join(C.dataset_path, "cityscapes_train_fine.txt")
-C.eval_source = osp.join(C.dataset_path, "cityscapes_val_fine.txt")
-C.test_source = osp.join(C.dataset_path, "cityscapes_test.txt")
+C.train_source = osp.join(C.dataset_path, "train.txt")
+C.eval_source = osp.join(C.dataset_path, "val.txt")
+C.test_source = osp.join(C.dataset_path, "val.txt")
 
 """Path Config"""
 def add_path(path):
@@ -37,16 +37,16 @@ def add_path(path):
 add_path(osp.join(C.root_dir, 'tools'))
 
 """Image Config"""
-C.num_classes = 19
-C.background = -1
+C.num_classes = 9
+C.background = 0
 C.image_mean = np.array([0.485, 0.456, 0.406])
 C.image_std = np.array([0.229, 0.224, 0.225])
 C.down_sampling = 2 # first down_sampling then crop ......
 C.image_height = 160 # this size is after down_sampling
 C.image_width = 160*2
 C.gt_down_sampling = 8 # model's default output size without final upsampling
-C.num_train_imgs = 2975
-C.num_eval_imgs = 500
+C.num_train_imgs = 7298
+C.num_eval_imgs = 149
 
 """ Settings for network, this would be different for each kind of model"""
 C.bn_eps = 1e-5
@@ -63,8 +63,8 @@ C.train_scale_array = [0.75, 1, 1.25]
 C.eval_stride_rate = 5 / 6
 C.eval_scale_array = [1, ]
 C.eval_flip = False
-C.eval_height = 1024
-C.eval_width = 2048
+C.eval_height = 480
+C.eval_width = 960
 
 
 """ Search Config """
@@ -75,7 +75,7 @@ C.arch_weight_decay = 0
 C.layers = 16
 C.branch = 2
 
-C.pretrain = "search-pretrain-256x512_F12.L16_batch3-20200326-192243"
+C.pretrain = True # "search-pretrain-256x512_F12.L16_batch3-20200326-192243"
 # C.pretrain = "search-pretrain-256x512_F12.L16_batch3-20200101-012345"
 ########################################
 C.prun_modes = ['max', 'arch_ratio',]

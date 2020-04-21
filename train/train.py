@@ -214,7 +214,7 @@ def main():
             model = apex.parallel.convert_syncbn_model(model)
         models.append(model)
 
-    model, optimizer = amp.initialize(models, optimizer,
+    models, optimizer = amp.initialize(models, optimizer,
                                       opt_level=args.opt_level,
                                       keep_batchnorm_fp32=args.keep_batchnorm_fp32,
                                       loss_scale=args.loss_scale

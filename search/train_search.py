@@ -20,7 +20,7 @@ from thop import profile
 
 from config_search import config
 from dataloader import get_train_loader
-from tools.datasets import Cityscapes
+from tools.datasets import Agro
 
 from tools.utils.init_func import init_weight
 from tools.seg_opr.loss_opr import ProbOhemCrossEntropy2d
@@ -30,6 +30,30 @@ from architect import Architect
 from tools.utils.darts_utils import create_exp_dir, save, plot_op, plot_path_width, objective_acc_lat
 from model_search import Network_Multi_Path as Network
 from model_seg import Network_Multi_Path_Infer
+import torch.backends.cudnn as cudnn
+
+try:
+    from apex.parallel import DistributedDataParallel as DDP
+    from apex.fp16_utils import *
+    from apex import amp, optimizers
+    from apex.multi_tensor_apply import multi_tensor_applier
+except ImportError:
+    raise ImportError("Please install apex from https://www.github.com/nvidia/apex to run this example.")
+
+
+def parse():
+
+    parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
+    parser.add_argument("--local_rank", default=0, type=int)
+    parser.add_argument('--sync_bn', action='store_true',
+                        help='enabling apex sync BN.', default=True)
+    parser.add_argument('--opt-level', type=str, default='O1')
+    parser.add_argument('--keep-batchnorm-fp32', type=str, default=None)
+    parser.add_argument('--loss-scale', type=str, default="dynamic")
+    parser.add_argument('--channels-last', type=bool, default=False)
+    args = parser.parse_args()
+    return args
+
 
 
 def main(pretrain=True):
@@ -49,13 +73,13 @@ def main(pretrain=True):
         update_arch = False
     logging.info("args = %s", str(config))
     # preparation ################
-    torch.backends.cudnn.enabled = True
-    torch.backends.cudnn.benchmark = True
-    seed = config.seed
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
+    # torch.backends.cudnn.enabled = True
+    # torch.backends.cudnn.benchmark = True
+    # seed = config.seed
+    # np.random.seed(seed)
+    # torch.manual_seed(seed)
+    # if torch.cuda.is_available():
+    #     torch.cuda.manual_seed(seed)
 
     # config network and criterion ################
     min_kept = int(config.batch_size * config.image_height * config.image_width // (16 * config.gt_down_sampling ** 2))
@@ -105,10 +129,10 @@ def main(pretrain=True):
                     'train_source': config.train_source,
                     'eval_source': config.eval_source,
                     'down_sampling': config.down_sampling}
-    train_loader_model = get_train_loader(config, Cityscapes, portion=config.train_portion)
-    train_loader_arch = get_train_loader(config, Cityscapes, portion=config.train_portion-1)
+    train_loader_model = get_train_loader(config, Agro, portion=config.train_portion)
+    train_loader_arch = get_train_loader(config, Agro, portion=config.train_portion-1)
 
-    evaluator = SegEvaluator(Cityscapes(data_setting, 'val', None), config.num_classes, config.image_mean,
+    evaluator = SegEvaluator(Agro(data_setting, 'val', None), config.num_classes, config.image_mean,
                              config.image_std, model, config.eval_scale_array, config.eval_flip, 0, config=config,
                              verbose=False, save_path=None, show_image=False)
 
@@ -122,6 +146,28 @@ def main(pretrain=True):
     latency_supernet_history = []; latency_weight_history = [];
     valid_names = ["8s", "16s", "32s", "8s_32s", "16s_32s"]
     arch_names = {0: "teacher", 1: "student"}
+    if args.sync_bn:
+        import apex
+        print("using apex synced BN")
+        model = apex.parallel.convert_syncbn_model(model)
+
+    model, optimizer = amp.initialize(model, optimizer,
+                                      opt_level=args.opt_level,
+                                      keep_batchnorm_fp32=args.keep_batchnorm_fp32,
+                                      loss_scale=args.loss_scale
+                                      )
+
+    # if args.distributed:
+    #     # By default, apex.parallel.DistributedDataParallel overlaps communication with
+    #     # computation in the backward pass.
+    #     # model = DDP(model)
+    #     # delay_allreduce delays all communication to the end of the backward pass.
+    #     for i in range(len(model)):
+    #         # models[i] = torch.nn.parallel.DistributedDataParallel(models[i],
+    #         #                                                       device_ids=[args.local_rank],
+    #         #                                                       output_device=config.local_rank)
+    #         models[i] = DDP(models[i], delay_allreduce=True)
+
     for epoch in tbar:
         logging.info(pretrain)
         logging.info(config.save)
@@ -300,4 +346,33 @@ def arch_logging(model, args, logger, epoch):
 
 
 if __name__ == '__main__':
-    main(pretrain=config.pretrain) 
+    global args
+    args = parse()
+    if args.channels_last:
+        memory_format = torch.channels_last
+    else:
+        memory_format = torch.contiguous_format
+
+    if config.deterministic:
+        cudnn.benchmark = False
+        cudnn.deterministic = True
+        torch.manual_seed(config.seed)
+        torch.set_printoptions(precision=10)
+        np.random.seed(config.seed)
+
+    args.distributed = False
+
+    if 'WORLD_SIZE' in os.environ:
+        args.distributed = int(os.environ['WORLD_SIZE']) > 1
+    args.world_size = 1
+
+    if args.distributed:
+        args.gpu = args.local_rank
+        torch.cuda.set_device(args.gpu)
+        torch.distributed.init_process_group(backend='nccl',
+                                             init_method='env://')
+        args.world_size = torch.distributed.get_world_size()
+
+    assert torch.backends.cudnn.enabled, "Amp requires cudnn backend to be enabled."
+
+    main(pretrain=config.pretrain)
