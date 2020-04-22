@@ -9,6 +9,7 @@ import sys
 import numpy as np
 from easydict import EasyDict as edict
 import torch
+import os
 C = edict()
 config = C
 cfg = C
@@ -117,5 +118,9 @@ else:
     C.save = "%dx%d_F%d.L%d_batch%d"%(C.image_height, C.image_width, C.Fch, C.layers, C.batch_size)
 ########################################
 assert len(C.latency_weight) == len(C.stem_head_width) and len(C.stem_head_width) == len(C.FPS_min) and len(C.FPS_min) == len(C.FPS_max)
+
+if 'WORLD_SIZE' in os.environ:
+    C.niters_per_epoch = int(C.niters_per_epoch / int(os.environ['WORLD_SIZE']))
+
 
 C.unrolled = False
