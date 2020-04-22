@@ -56,7 +56,7 @@ C.num_classes = 9
 C.background = 0
 C.image_mean = np.array([0.485, 0.456, 0.406])
 C.image_std = np.array([0.229, 0.224, 0.225])
-C.down_sampling = 2 # first down_sampling then crop ......
+C.down_sampling = (512, 256) # first down_sampling then crop ......
 C.image_height = 160 # this size is after down_sampling
 C.image_width = 160*2
 C.gt_down_sampling = 8 # model's default output size without final upsampling
@@ -120,7 +120,7 @@ else:
 assert len(C.latency_weight) == len(C.stem_head_width) and len(C.stem_head_width) == len(C.FPS_min) and len(C.FPS_min) == len(C.FPS_max)
 
 if 'WORLD_SIZE' in os.environ:
-    C.niters_per_epoch = int(C.niters_per_epoch / int(os.environ['WORLD_SIZE']))
+    C.niters_per_epoch = C.niters_per_epoch // int(os.environ['WORLD_SIZE'])
 
 
 C.unrolled = False

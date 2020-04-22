@@ -337,8 +337,8 @@ def infer(epoch, model, evaluator, logger, FPS=True):
     mIoUs = []
     for idx in range(5):
         evaluator.out_idx = idx
-        # _, mIoU = evaluator.run_online()
-        _, mIoU = evaluator.run_online_multiprocess()
+        _, mIoU = evaluator.run_online()
+        # _, mIoU = evaluator.run_online_multiprocess()
         mIoUs.append(mIoU)
     if FPS:
         fps0, fps1 = arch_logging(model, config, logger, epoch)

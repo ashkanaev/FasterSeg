@@ -62,7 +62,7 @@ C.num_classes = 8
 C.background = 0
 C.image_mean = np.array([0.485, 0.456, 0.406])
 C.image_std = np.array([0.229, 0.224, 0.225])
-C.target_size = 480
+C.target_size = 512
 C.down_sampling = 1 # first down_sampling then crop ......
 C.gt_down_sampling = 1
 C.num_train_imgs = 7298
@@ -87,10 +87,10 @@ C.train_scale_array = [0.75, 1, 1.25]
 C.eval_stride_rate = 5 / 6
 C.eval_scale_array = [1, ]
 C.eval_flip = False
-C.eval_base_size = 480
-C.eval_crop_size = 480
-C.eval_height = 480
-C.eval_width = 2048
+C.eval_base_size = 512
+C.eval_crop_size = 512
+C.eval_height = 512
+C.eval_width = 1024
 
 
 C.layers = 16
@@ -106,8 +106,8 @@ if C.mode == "teacher":
     C.load_epoch = "last" # "last" or "int" (e.g. "30"): which epoch to load from the searched architecture
     C.batch_size = 12
     C.Fch = 12
-    C.image_height = 480
-    C.image_width = 960
+    C.image_height = 512
+    C.image_width = 1024
     C.save = "%dx%d_teacher_batch%d"%(C.image_height, C.image_width, C.batch_size)
 elif C.mode == "student":
     ##### train student with KL distillation from teacher ##############
@@ -120,8 +120,8 @@ elif C.mode == "student":
     C.load_epoch = "last" # "last" or "int" (e.g. "30")
     C.batch_size = 12
     C.Fch = 12
-    C.image_height = 480
-    C.image_width = 960
+    C.image_height = 512
+    C.image_width = 1024
     C.save = "%dx%d_student_batch%d"%(C.image_height, C.image_width, C.batch_size)
 
 ########################################
