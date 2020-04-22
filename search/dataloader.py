@@ -1,8 +1,24 @@
 import cv2
 cv2.setNumThreads(0)
 from torch.utils import data
-
+import torch
 from tools.utils.img_utils import random_scale, random_mirror, normalize, generate_random_crop_pos, random_crop_pad_to_shape
+
+
+def fast_collate(batch, memory_format):
+
+    imgs = [img['data'] for img in batch]
+    targets = torch.tensor([target['label'] for target in batch], dtype=torch.int64)
+    w = imgs[0].size[0]
+    h = imgs[0].size[1]
+    tensor = torch.zeros( (len(imgs), 3, h, w), dtype=torch.uint8).contiguous(memory_format=memory_format)
+    for i, img in enumerate(imgs):
+        nump_array = np.asarray(img, dtype=np.uint8)
+        if(nump_array.ndim < 3):
+            nump_array = np.expand_dims(nump_array, axis=-1)
+        nump_array = np.rollaxis(nump_array, 2)
+        tensor[i] += torch.from_numpy(nump_array)
+    return tensor, targets
 
 
 class TrainPre(object):
@@ -31,7 +47,7 @@ class TrainPre(object):
         return p_img, p_gt, extra_dict
 
 
-def get_train_loader(config, dataset, portion=None, worker=None):
+def get_train_loader(config, dataset, portion=None, worker=None,  sampler=None, memory_format=None):
     data_setting = {'img_root': config.img_root_folder,
                     'gt_root': config.gt_root_folder,
                     'train_source': config.train_source,
@@ -44,12 +60,18 @@ def get_train_loader(config, dataset, portion=None, worker=None):
 
     is_shuffle = True
     batch_size = config.batch_size
+    train_sampler = None
+
+    if config.distributed:
+        train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
+    collate_fn = lambda b: fast_collate(b, memory_format)
 
     train_loader = data.DataLoader(train_dataset,
                                    batch_size=batch_size,
                                    num_workers=config.num_workers if worker is None else worker,
                                    drop_last=True,
-                                   shuffle=is_shuffle,
+                                   shuffle=(train_sampler is None),
+                                   sampler=train_sampler,
                                    pin_memory=True)
 
-    return train_loader
+    return train_loader, train_sampler

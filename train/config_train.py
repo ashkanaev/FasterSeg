@@ -21,8 +21,6 @@ C.seed = 12345
 
 C.num_gpus =  torch.cuda.device_count()
 C.num_nodes = 0
-
-
 C.opt_level = 'O1'
 C.keep_batchnorm_fp32 = None
 C.loss_scale = "dynamic"
@@ -32,6 +30,8 @@ C.distributed = False
 C.gpu = 0
 C.world_size = 1
 C.sync_bn = False
+
+
 
 
 """please config ROOT_dir and user when u first using"""

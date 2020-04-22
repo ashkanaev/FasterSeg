@@ -83,15 +83,15 @@ def drop_path(x, drop_prob):
 
 
 def create_exp_dir(path, scripts_to_save=None):
-    if not os.path.exists(path):
-        os.mkdir(path)
+    # if not os.path.exists(path):
+    #     os.mkdir(path)
     print('Experiment dir : {}'.format(path))
 
     if scripts_to_save is not None:
         os.makedirs(os.path.join(path, 'scripts'), exist_ok=True)
         for script in scripts_to_save:
             dst_file = os.path.join(path, 'scripts', os.path.basename(script))
-            # os.makedirs(os.path.dirname(dst_file), exist_ok=True)
+            os.makedirs(os.path.dirname(dst_file), exist_ok=True)
             shutil.copyfile(script, dst_file)
 
 ########################## TensorRT speed_test #################################

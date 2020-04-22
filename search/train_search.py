@@ -5,7 +5,7 @@ import time
 import glob
 import logging
 from tqdm import tqdm
-
+import argparse
 import torch
 import torch.nn as nn
 import torch.utils
@@ -46,8 +46,8 @@ def parse():
     parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
     parser.add_argument("--local_rank", default=0, type=int)
     parser.add_argument('--sync_bn', action='store_true',
-                        help='enabling apex sync BN.', default=True)
-    parser.add_argument('--opt-level', type=str, default='O1')
+                        help='enabling apex sync BN.', default=False)
+    parser.add_argument('--opt-level', type=str, default='O2')
     parser.add_argument('--keep-batchnorm-fp32', type=str, default=None)
     parser.add_argument('--loss-scale', type=str, default="dynamic")
     parser.add_argument('--channels-last', type=bool, default=False)
@@ -129,7 +129,7 @@ def main(pretrain=True):
                     'train_source': config.train_source,
                     'eval_source': config.eval_source,
                     'down_sampling': config.down_sampling}
-    train_loader_model = get_train_loader(config, Agro, portion=config.train_portion)
+    train_loader_model, train_sampler = get_train_loader(config, Agro, portion=config.train_portion)
     train_loader_arch = get_train_loader(config, Agro, portion=config.train_portion-1)
 
     evaluator = SegEvaluator(Agro(data_setting, 'val', None), config.num_classes, config.image_mean,
@@ -157,16 +157,8 @@ def main(pretrain=True):
                                       loss_scale=args.loss_scale
                                       )
 
-    # if args.distributed:
-    #     # By default, apex.parallel.DistributedDataParallel overlaps communication with
-    #     # computation in the backward pass.
-    #     # model = DDP(model)
-    #     # delay_allreduce delays all communication to the end of the backward pass.
-    #     for i in range(len(model)):
-    #         # models[i] = torch.nn.parallel.DistributedDataParallel(models[i],
-    #         #                                                       device_ids=[args.local_rank],
-    #         #                                                       output_device=config.local_rank)
-    #         models[i] = DDP(models[i], delay_allreduce=True)
+    if args.distributed:
+        model = DDP(model, delay_allreduce=True)
 
     for epoch in tbar:
         logging.info(pretrain)
@@ -177,7 +169,7 @@ def main(pretrain=True):
 
         # training
         tbar.set_description("[Epoch %d/%d][train...]" % (epoch + 1, config.nepochs))
-        train(pretrain, train_loader_model, train_loader_arch, model, architect, ohem_criterion, optimizer, lr_policy, logger, epoch, update_arch=update_arch)
+        train(pretrain, train_loader_model, train_loader_arch, model, architect, ohem_criterion, optimizer, lr_policy, logger, epoch, update_arch=update_arch,  train_sampler=train_sampler)
         torch.cuda.empty_cache()
         lr_policy.step()
 
@@ -190,7 +182,7 @@ def main(pretrain=True):
                 for i in range(5):
                     logger.add_scalar('mIoU/val_min_%s'%valid_names[i], valid_mIoUs[i], epoch)
                     logging.info("Epoch %d: valid_mIoU_min_%s %.3f"%(epoch, valid_names[i], valid_mIoUs[i]))
-                if len(model._width_mult_list) > 1:
+                if len(config.width_mult_list) > 1:
                     model.prun_mode = "max"
                     valid_mIoUs = infer(epoch, model, evaluator, logger, FPS=False)
                     for i in range(5):
@@ -255,18 +247,25 @@ def main(pretrain=True):
                     logging.info("arch_latency_weight_%s = "%arch_names[idx] + str(architect.latency_weight[idx]))
 
 
-def train(pretrain, train_loader_model, train_loader_arch, model, architect, criterion, optimizer, lr_policy, logger, epoch, update_arch=True):
+def train(pretrain, train_loader_model, train_loader_arch, model, architect, criterion, optimizer, lr_policy, logger, epoch, update_arch=True, train_sampler=None):
     model.train()
 
     bar_format = '{desc}[{elapsed}<{remaining},{rate_fmt}]'
     pbar = tqdm(range(config.niters_per_epoch), file=sys.stdout, bar_format=bar_format, ncols=80)
-    dataloader_model = iter(train_loader_model)
+    dataloader = iter(train_loader_model)
     dataloader_arch = iter(train_loader_arch)
 
     for step in pbar:
         optimizer.zero_grad()
+        if train_sampler:
+            train_sampler.set_epoch(step)
+        minibatch = None
+        try:
+            minibatch = dataloader.next()
+        except:
+            dataloader = iter(train_loader_model)
+            minibatch = dataloader.next()
 
-        minibatch = dataloader_model.next()
         imgs = minibatch['data']
         target = minibatch['label']
         imgs = imgs.cuda(non_blocking=True)
@@ -275,7 +274,14 @@ def train(pretrain, train_loader_model, train_loader_arch, model, architect, cri
         if update_arch:
             # get a random minibatch from the search queue with replacement
             pbar.set_description("[Arch Step %d/%d]" % (step + 1, len(train_loader_model)))
-            minibatch = dataloader_arch.next()
+            # minibatch = dataloader_arch.next()
+            minibatch = None
+            try:
+                minibatch = dataloader_arch.next()
+            except:
+                dataloader_arch = iter(train_loader_arch)
+                minibatch = dataloader_arch.next()
+
             imgs_search = minibatch['data']
             target_search = minibatch['label']
             imgs_search = imgs_search.cuda(non_blocking=True)
@@ -285,9 +291,37 @@ def train(pretrain, train_loader_model, train_loader_arch, model, architect, cri
                 logger.add_scalar('loss_arch/train', loss_arch, epoch*len(pbar)+step)
                 logger.add_scalar('arch/latency_supernet', architect.latency_supernet, epoch*len(pbar)+step)
 
-        loss = model._loss(imgs, target, pretrain)
+        # loss = model._loss(imgs, target, pretrain)
+        loss = 0
+        if pretrain is not True:
+            # "random width": sampled by gambel softmax
+            config.prun_mode = None
+            for idx in range(len(config._arch_names)):
+                config.arch_idx = idx
+                logits = model(imgs)
+                loss = loss + sum(criterion(logit, target) for logit in logits)
+        if len(config.width_mult_list) > 1:
+            config.prun_mode = "max"
+            logits = model(imgs)
+            loss = loss + sum(criterion(logit, target) for logit in logits)
+            config.prun_mode = "min"
+            logits = model(imgs)
+            loss = loss + sum(criterion(logit, target) for logit in logits)
+            if pretrain == True:
+                config.prun_mode = "random"
+                logits = model(imgs)
+                loss = loss + sum(criterion(logit, target) for logit in logits)
+                config.prun_mode = "random"
+                logits = model(imgs)
+                loss = loss + sum(criterion(logit, target) for logit in logits)
+        elif pretrain == True and len(model.width_mult_list) == 1:
+            config.prun_mode = "max"
+            logits = model(imgs)
+            loss = loss + sum(criterion(logit, target) for logit in logits)
+
         logger.add_scalar('loss/train', loss, epoch*len(pbar)+step)
-        loss.backward()
+        with amp.scale_loss(loss, optimizer) as scaled_loss:
+            scaled_loss.backward()
         nn.utils.clip_grad_norm_(model.parameters(), config.grad_clip)
         optimizer.step()
         optimizer.zero_grad()
@@ -319,7 +353,7 @@ def arch_logging(model, args, logger, epoch):
         [getattr(model, model._arch_names[model.arch_idx]["alphas"][0]).clone().detach(), getattr(model, model._arch_names[model.arch_idx]["alphas"][1]).clone().detach(), getattr(model, model._arch_names[model.arch_idx]["alphas"][2]).clone().detach()],
         [None, getattr(model, model._arch_names[model.arch_idx]["betas"][0]).clone().detach(), getattr(model, model._arch_names[model.arch_idx]["betas"][1]).clone().detach()],
         [getattr(model, model._arch_names[model.arch_idx]["ratios"][0]).clone().detach(), getattr(model, model._arch_names[model.arch_idx]["ratios"][1]).clone().detach(), getattr(model, model._arch_names[model.arch_idx]["ratios"][2]).clone().detach()],
-        num_classes=model._num_classes, layers=model._layers, Fch=model._Fch, width_mult_list=model._width_mult_list, stem_head_width=model._stem_head_width[model.arch_idx])
+        num_classes=model._num_classes, layers=model._layers, Fch=model._Fch, width_mult_list=config.width_mult_list, stem_head_width=model._stem_head_width[model.arch_idx])
 
     plot_op(net.ops0, net.path0, F_base=args.Fch).savefig("table.png", bbox_inches="tight")
     logger.add_image("arch/ops0_arch%d"%model.arch_idx, np.swapaxes(np.swapaxes(plt.imread("table.png"), 0, 2), 1, 2), epoch)
@@ -364,7 +398,9 @@ if __name__ == '__main__':
 
     if 'WORLD_SIZE' in os.environ:
         args.distributed = int(os.environ['WORLD_SIZE']) > 1
+        config.distributed = args.distributed
     args.world_size = 1
+
 
     if args.distributed:
         args.gpu = args.local_rank

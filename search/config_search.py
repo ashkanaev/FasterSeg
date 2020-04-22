@@ -8,21 +8,35 @@ import os.path as osp
 import sys
 import numpy as np
 from easydict import EasyDict as edict
-
+import torch
 C = edict()
 config = C
 cfg = C
 
 C.seed = 12345
 
+C.num_gpus =  torch.cuda.device_count()
+C.num_nodes = 0
+C.opt_level = 'O2'
+C.keep_batchnorm_fp32 = None
+C.loss_scale = "dynamic"
+C.deterministic = True
+C.local_rank = 0
+C.distributed = False
+C.gpu = 0
+C.world_size = 1
+C.sync_bn = False
+
+
 """please config ROOT_dir and user when u first using"""
-C.repo_name = 'FasterSeg'
-C.abs_dir = '/work/FasterSeg/search/' #osp.realpath(".")
+C.repo_name = 'pycharm_project_477'
+print(C.repo_name)
+C.abs_dir = osp.realpath(".")
 C.this_dir = C.abs_dir.split(osp.sep)[-1]
 C.root_dir = C.abs_dir[:C.abs_dir.index(C.repo_name) + len(C.repo_name)]
 
 """Data Dir"""
-C.dataset_path = "/media/ashkanaev/DATA/datasets/agro"
+C.dataset_path = "/media/fdata/ashkanaev/agro"
 C.img_root_folder = C.dataset_path
 C.gt_root_folder = C.dataset_path
 C.train_source = osp.join(C.dataset_path, "train.txt")
