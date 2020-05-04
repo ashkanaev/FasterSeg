@@ -121,7 +121,7 @@ try:
     def build_engine(model_file):
         with trt.Builder(TRT_LOGGER) as builder, builder.create_network() as network, trt.OnnxParser(network, TRT_LOGGER) as parser:
             builder.max_workspace_size = MAX_WORKSPACE_SIZE
-            builder.max_batch_size = MAX_BATCH_SIZE
+            builder.max_batch_size = MAX_BATCH_tSIZE
 
             with open(model_file, 'rb') as model:
                 parser.parse(model.read())

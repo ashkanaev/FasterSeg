@@ -35,14 +35,14 @@ C.sync_bn = False
 
 
 """please config ROOT_dir and user when u first using"""
-C.repo_name = 'FasterSeg'
-C.abs_dir = '/work/FasterSeg/search/'
+C.repo_name = 'fasterseg_agro'
+C.abs_dir = osp.realpath(".")
 C.this_dir = C.abs_dir.split(osp.sep)[-1]
 C.root_dir = C.abs_dir[:C.abs_dir.index(C.repo_name) + len(C.repo_name)]
 C.log_dir = osp.abspath(osp.join(C.root_dir, 'log', C.this_dir))
 
 """Data Dir"""
-C.dataset_path = "/media/ashkanaev/DATA/datasets/agro"
+C.dataset_path = "/media/fdata/ashkanaev/agro"
 C.img_root_folder = C.dataset_path
 C.gt_root_folder = C.dataset_path
 C.train_source = osp.join(C.dataset_path, "train.txt")
@@ -58,7 +58,7 @@ def add_path(path):
 add_path(osp.join(C.root_dir, 'tools'))
 
 """Image Config"""
-C.num_classes = 8
+C.num_classes = 9
 C.background = 0
 C.image_mean = np.array([0.485, 0.456, 0.406])
 C.image_std = np.array([0.229, 0.224, 0.225])
@@ -102,7 +102,7 @@ if C.mode == "teacher":
     C.branch = [2]
     C.width_mult_list = [4./12, 6./12, 8./12, 10./12, 1.,]
     C.stem_head_width = [(1, 1)]
-    C.load_path = "search-224x448_F12.L16_batch2-20200406-183345" # path to the searched directory
+    C.load_path = "search-224x448_F12.L16_batch2-20200427-230502" # path to the searched directory
     C.load_epoch = "last" # "last" or "int" (e.g. "30"): which epoch to load from the searched architecture
     C.batch_size = 12
     C.Fch = 12
@@ -115,8 +115,8 @@ elif C.mode == "student":
     C.branch = [2, 2]
     C.width_mult_list = [4./12, 6./12, 8./12, 10./12, 1.,]
     C.stem_head_width = [(1, 1), (8./12, 8./12),]
-    C.load_path = "fasterseg" # path to the searched directory
-    C.teacher_path = "fasterseg" # where to load the pretrained teacher's weight
+    C.load_path = "search-224x448_F12.L16_batch2-20200427-230502" # path to the searched directory
+    C.teacher_path = "search-224x448_F12.L16_batch2-20200427-230502" # where to load the pretrained teacher's weight
     C.load_epoch = "last" # "last" or "int" (e.g. "30")
     C.batch_size = 12
     C.Fch = 12

@@ -22,7 +22,7 @@ if config.is_eval:
 else:
     config.save = 'train-{}-{}'.format(config.save, time.strftime("%Y%m%d-%H%M%S"))
 from dataloader import get_train_loader
-from datasets import Cityscapes
+from datasets import Agro
 
 from utils.init_func import init_weight
 from seg_opr.loss_opr import ProbOhemCrossEntropy2d
@@ -139,7 +139,7 @@ def main():
                         'test_source': config.test_source,
                         'down_sampling': config.down_sampling}
 
-    train_loader, train_sampler = get_train_loader(config, Cityscapes, test=config.is_test)
+    train_loader, train_sampler = get_train_loader(config, Agro, test=config.is_test)
 
 
     # Model #######################################
@@ -194,11 +194,11 @@ def main():
             state.update(pretrained_dict)
             model.load_state_dict(state)
 
-        evaluator = SegEvaluator(Cityscapes(data_setting, 'val', None), config.num_classes, config.image_mean,
+        evaluator = SegEvaluator(Agro(data_setting, 'val', None), config.num_classes, config.image_mean,
                                  config.image_std, model, config.eval_scale_array, config.eval_flip, 0, out_idx=0, config=config,
                                  verbose=False, save_path=None, show_image=False, show_prediction=False)
         evaluators.append(evaluator)
-        tester = SegTester(Cityscapes(data_setting, 'test', None), config.num_classes, config.image_mean,
+        tester = SegTester(Agro(data_setting, 'test', None), config.num_classes, config.image_mean,
                                  config.image_std, model, config.eval_scale_array, config.eval_flip, 0, out_idx=0, config=config,
                                  verbose=False, save_path=None, show_prediction=False)
         testers.append(tester)
@@ -224,10 +224,7 @@ def main():
         # computation in the backward pass.
         # model = DDP(model)
         # delay_allreduce delays all communication to the end of the backward pass.
-        for i in range(len(model)):
-            # models[i] = torch.nn.parallel.DistributedDataParallel(models[i],
-            #                                                       device_ids=[args.local_rank],
-            #                                                       output_device=config.local_rank)
+        for i in range(len(models)):
             models[i] = DDP(models[i], delay_allreduce=True)
 
 
@@ -253,8 +250,6 @@ def main():
                     else:
                         logger.add_scalar("mIoU/val_student", valid_mIoUs[idx], 0)
                         logging.info("student's valid_mIoU %.3f"%(valid_mIoUs[idx]))
-        exit(0)
-
     tbar = tqdm(range(config.nepochs), ncols=80)
     for epoch in tbar:
         if train_sampler:
@@ -276,7 +271,7 @@ def main():
         adjust_learning_rate(base_lr, 0.992, optimizer, epoch+1, config.nepochs)
 
         # validation
-        if not config.is_test and ((epoch+1) % 10 == 0 or epoch == 0):
+        if not config.is_test and ((epoch+1) % 10 == 0 or epoch == 0 and torch.distributed.get_rank() == 0):
             tbar.set_description("[Epoch %d/%d][validation...]" % (epoch + 1, config.nepochs))
             with torch.no_grad():
                 valid_mIoUs = infer(models, evaluators, logger)
@@ -289,13 +284,14 @@ def main():
                         logging.info("student's valid_mIoU %.3f"%(valid_mIoUs[idx]))
                     save(models[idx], os.path.join(config.save, "weights%d.pt"%arch_idx))
         # test
-        if config.is_test and (epoch+1) >= 250 and (epoch+1) % 10 == 0:
+        if config.is_test and (epoch+1) >= 250 and (epoch+1) % 10 == 0 and torch.distributed.get_rank() == 0:
             tbar.set_description("[Epoch %d/%d][test...]" % (epoch + 1, config.nepochs))
             with torch.no_grad():
                 test(epoch, models, testers, logger)
 
-        for idx, arch_idx in enumerate(config.arch_idx):
-            save(models[idx], os.path.join(config.save, "weights%d.pt"%arch_idx))
+        if torch.distributed.get_rank() == 0:
+            for idx, arch_idx in enumerate(config.arch_idx):
+                save(models[idx], os.path.join(config.save, "weights%d.pt"%arch_idx))
 
 
 def train(train_loader, models, criterion, distill_criterion, optimizer, logger, epoch):
@@ -315,11 +311,6 @@ def train(train_loader, models, criterion, distill_criterion, optimizer, logger,
     lamb = 0.2
     for step in pbar:
         optimizer.zero_grad()
-        # try:
-        #     minibatch = next(dataloader)
-        # except StopIteration:
-        #     batch_iterator = iter(dataloader)
-        #     minibatch = next(batch_iterator)
         minibatch = None
         try:
             minibatch = dataloader.next()

@@ -30,7 +30,7 @@ C.sync_bn = False
 
 
 """please config ROOT_dir and user when u first using"""
-C.repo_name = 'pycharm_project_477'
+C.repo_name = 'fasterseg_agro'
 print(C.repo_name)
 C.abs_dir = osp.realpath(".")
 C.this_dir = C.abs_dir.split(osp.sep)[-1]
