@@ -259,9 +259,11 @@ def train(train_loader, models, criterion, distill_criterion, optimizer, logger,
                 if len(logits_list) > 1:
                     loss = loss + distill_criterion(F.softmax(logits_list[1], dim=1).log(), F.softmax(logits_list[0], dim=1))
 
-            metrics[idx].update(logits8.data, target)
-            description += "[mIoU%d: %.3f]"%(arch_idx, metrics[idx].get_scores())
-
+            # torch.cuda.synchronize()
+            if step % 20 == 0:
+                metrics[idx].update(logits8.data, target)
+                description += "[mIoU%d: %.3f]"%(arch_idx, metrics[idx].get_scores())
+        #
         pbar.set_description("[Step %d/%d]"%(step + 1, len(train_loader)) + description)
         logger.add_scalar('loss/train', loss+loss_kl, epoch*len(pbar)+step)
 
