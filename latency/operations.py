@@ -11,7 +11,7 @@ import os.path as osp
 from easydict import EasyDict as edict
 C = edict()
 """please config ROOT_dir and user when u first using"""
-C.repo_name = 'FasterSeg'
+C.repo_name = 'fasterseg'
 C.abs_dir = osp.realpath(".")
 C.this_dir = C.abs_dir.split(osp.sep)[-1]
 C.root_dir = C.abs_dir[:C.abs_dir.index(C.repo_name) + len(C.repo_name)]
@@ -119,7 +119,7 @@ class ConvNorm(nn.Module):
         return latency, (c_out, h_out, w_out)
 
     def forward(self, x):
-        assert x.size()[1] == self.C_in, "{} {}".format(x.size()[1], self.C_in)
+        # assert x.size()[1] == self.C_in, "{} {}".format(x.size()[1], self.C_in)
         x = self.conv(x)
         return x
 
