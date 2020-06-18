@@ -16,18 +16,19 @@ cfg = C
 C.seed = 12345
 
 """please config ROOT_dir and user when u first using"""
-C.repo_name = 'FasterSeg'
+C.repo_name = 'fasterseg_last'
 C.abs_dir = osp.realpath(".")
+print(C.abs_dir)
 C.this_dir = C.abs_dir.split(osp.sep)[-1]
 C.root_dir = C.abs_dir[:C.abs_dir.index(C.repo_name) + len(C.repo_name)]
 
 """Data Dir"""
-C.dataset_path = "/media/ashkanaev/DATA/datasets/cityscape/gtFine_trainvaltest"
+C.dataset_path = "/media/ashkanaev/DATA/datasets/agro"
 C.img_root_folder = C.dataset_path
 C.gt_root_folder = C.dataset_path
-C.train_source = osp.join(C.dataset_path, "cityscapes_train_fine.txt")
-C.eval_source = osp.join(C.dataset_path, "cityscapes_val_fine.txt")
-C.test_source = osp.join(C.dataset_path, "cityscapes_test.txt")
+C.train_source = osp.join(C.dataset_path, "train.txt")
+C.eval_source = osp.join(C.dataset_path, "val.txt")
+C.test_source = osp.join(C.dataset_path, "val.txt")
 
 """Path Config"""
 def add_path(path):
@@ -37,15 +38,15 @@ def add_path(path):
 add_path(osp.join(C.root_dir, 'tools'))
 
 """Image Config"""
-C.num_classes = 19
-C.background = -1
+C.num_classes = 9
+C.background = 0
 C.image_mean = np.array([0.485, 0.456, 0.406])
 C.image_std = np.array([0.229, 0.224, 0.225])
 C.down_sampling = 2 # first down_sampling then crop ......
 C.image_height = 160 # this size is after down_sampling
 C.image_width = 160*2
 C.gt_down_sampling = 8 # model's default output size without final upsampling
-C.num_train_imgs = 2975
+C.num_train_imgs = 4118
 C.num_eval_imgs = 500
 
 """ Settings for network, this would be different for each kind of model"""
@@ -83,7 +84,7 @@ C.Fch = 12
 C.width_mult_list = [4./12, 6./12, 8./12, 10./12, 1.]
 C.stem_head_width = [(1, 1), (8./12, 8./12),]
 C.FPS_min = [0, 155.]
-C.FPS_max = [0, 175.]
+C.FPS_max = [0, 200.]
 if C.pretrain == True:
     C.batch_size = 3
     C.niters_per_epoch = max(C.num_train_imgs // 2 // C.batch_size, 400)

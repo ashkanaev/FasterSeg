@@ -40,6 +40,25 @@ class SigmoidFocalLoss(nn.Module):
         return loss
 
 
+class OhemCELoss(nn.Module):
+    def __init__(self, ignore_lb=255, reduction='None', thresh=0.7, n_min=256 , *args, **kwargs):
+        super(OhemCELoss, self).__init__()
+        self.thresh = -torch.log(torch.tensor(thresh, dtype=torch.float)).cuda()
+        self.n_min = n_min
+        self.ignore_lb = ignore_lb
+        self.criteria = nn.CrossEntropyLoss(ignore_index=ignore_lb, reduction='none')
+
+    def forward(self, logits, labels):
+        N, C, H, W = logits.size()
+        loss = self.criteria(logits, labels).view(-1)
+        loss, _ = torch.sort(loss, descending=True)
+        if loss[self.n_min] > self.thresh:
+            loss = loss[loss>self.thresh]
+        else:
+            loss = loss[:self.n_min]
+        return torch.mean(loss)
+
+
 class ProbOhemCrossEntropy2d(nn.Module):
     def __init__(self, ignore_label, reduction='mean', thresh=0.6, min_kept=256,
                  down_ratio=1, use_weight=False):
@@ -47,7 +66,6 @@ class ProbOhemCrossEntropy2d(nn.Module):
         self.ignore_label = ignore_label
         self.thresh = float(thresh)
         self.min_kept = int(min_kept)
-        self.down_ratio = down_ratio
         if use_weight:
             weight = torch.FloatTensor(
                 [0.8373, 0.918, 0.866, 1.0345, 1.0166, 0.9969, 0.9754, 1.0489,

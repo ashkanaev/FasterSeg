@@ -16,7 +16,7 @@ cfg = C
 C.seed = 12345
 
 """please config ROOT_dir and user when u first using"""
-C.repo_name = 'fasterseg_agro'
+C.repo_name = 'fasterseg_last'
 print(C.repo_name)
 C.abs_dir = osp.realpath(".")
 C.this_dir = C.abs_dir.split(osp.sep)[-1]
@@ -24,7 +24,7 @@ C.root_dir = C.abs_dir[:C.abs_dir.index(C.repo_name) + len(C.repo_name)]
 C.log_dir = osp.abspath(osp.join(C.root_dir, 'log', C.this_dir))
 
 """Data Dir"""
-C.dataset_path = "/media/fdata/ashkanaev/agro"
+C.dataset_path = "/media/ashkanaev/DATA/datasets/agro"
 C.img_root_folder = C.dataset_path
 C.gt_root_folder = C.dataset_path
 C.train_source = osp.join(C.dataset_path, "train.txt")
@@ -56,6 +56,8 @@ C.bn_momentum = 0.1
 
 """Train Config"""
 C.lr = 0.01
+C.set_lr = True
+
 C.momentum = 0.9
 C.weight_decay = 5e-4
 C.nepochs = 600
@@ -119,8 +121,8 @@ elif C.mode == "student":
     C.branch = [2, 2]
     C.width_mult_list = [4./12, 6./12, 8./12, 10./12, 1.,]
     C.stem_head_width = [(1, 1), (8./12, 8./12),]
-    C.load_path = "train-512x1024_student_batch12-20200513-011901" # path to the searched directory
-    C.teacher_path = "train-512x1024_student_batch12-20200513-011901" # where to load the pretrained teacher's weight
+    C.load_path = "train-512x1024_student_batch12-20200528-022555" # path to the searched directory
+    C.teacher_path = "train-512x1024_student_batch12-20200528-022555" # where to load the pretrained teacher's weight
     C.load_epoch = "last" # "last" or "int" (e.g. "30")
     C.batch_size = 12
     C.Fch = 12
@@ -129,6 +131,6 @@ elif C.mode == "student":
     C.save = "%dx%d_student_batch%d"%(C.image_height, C.image_width, C.batch_size)
 
 ########################################
-C.is_test = True # if True, prediction files for the test set will be generated
+C.is_test = False # if True, prediction files for the test set will be generated
 C.is_eval = False # if True, the train.py will only do evaluation for once
-C.eval_path = "train-512x1024_student_batch12-20200513-011901" # path to pretrained directory to be evaluated
+C.eval_path = "train-512x1024_student_batch12-20200528-022555" # path to pretrained directory to be evaluated

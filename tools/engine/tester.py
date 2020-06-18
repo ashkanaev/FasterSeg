@@ -274,6 +274,26 @@ class Tester(object):
         with torch.cuda.device(input_data.get_device()):
             self.val_func.eval()
             self.val_func.to(input_data.get_device())
+            dummy_input = torch.ones(1, 3, 320, 640, device='cuda') * 5
+            # model_trt = torch2trt(self.val_func, [dummy_input])
+
+            torch.onnx.export(self.val_func,  # model being run
+                              dummy_input,  # model input (or a tuple for multiple inputs)
+                              "model_new_4.onnx",  # where to save the model (can be a file or file-like object)
+                              export_params=True,  # store the trained parameter weights inside the model file
+                              opset_version=11,  # the ONNX version to export the model to
+                              do_constant_folding=True,  # whether to execute constant folding for optimization
+                              input_names=['data'],  # the model's input names
+                              output_names=['output'],  # the model's output names
+                              dynamic_axes={'data': {0: 'batch_size'},  # variable lenght axes
+                                                'output': {0: 'batch_size'}})
+            print('done!')
+            # onnx_model = onnx.load("model_new.onnx")
+            # passes = ['fuse_consecutive_concats']
+            # optimized_model = onnx.optimizer.optimize(onnx_model, passes)
+
+            # onnx.checker.check_model(onnx_model)
+
             with torch.no_grad():
                 score = self.val_func(input_data)
                 if (isinstance(score, tuple) or isinstance(score, list)) and len(score) > 1:

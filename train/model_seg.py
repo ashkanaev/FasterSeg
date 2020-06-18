@@ -403,4 +403,30 @@ class Network_Multi_Path_Infer(nn.Module):
         latency, size = self.ffm.forward_latency((out_size[0]*self._branch, out_size[1], out_size[2])); latency_total += latency
         latency, size = self.heads8.forward_latency(size); latency_total += latency
         return latency_total, size
+
+
+    def get_params(self):
+        wd_params, nowd_params, lr_mul_wd_params, lr_mul_nowd_params = [], [], [], []
+        for name, child in self.named_children():
+            if isinstance(child, nn.CrossEntropyLoss):
+                continue
+            # child_wd_params, child_nowd_params = child.get_params()
+            child_wd_params, child_nowd_params = [], []
+            for name, module in child.named_modules():
+                if isinstance(module, (nn.Linear, nn.Conv2d)):
+                    wd_params.append(module.weight)
+                    if not module.bias is None:
+                        nowd_params.append(module.bias)
+                elif isinstance(module, BatchNorm2d):
+                    nowd_params += list(module.parameters())
+            # return wd_params, nowd_params
+
+
+            if isinstance(child, (Head, FeatureFusion)):  # FeatureFusion could be excess
+                lr_mul_wd_params += child_wd_params
+                lr_mul_nowd_params += child_nowd_params
+            else:
+                wd_params += child_wd_params
+                nowd_params += child_nowd_params
+        return wd_params, nowd_params, lr_mul_wd_params, lr_mul_nowd_params
     
