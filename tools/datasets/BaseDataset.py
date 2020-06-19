@@ -37,7 +37,7 @@ class BaseDataset(data.Dataset):
             names = self._file_names[index]
         img_path = os.path.join(self._img_path, names[0])
         gt_path = os.path.join(self._gt_path, names[1])
-        item_name = names[1].split("/")[-1].split(".")[0]
+        item_name = os.path.basename(names[1])
 
         img, gt = self._fetch_data(img_path, gt_path)
         img = img[:, :, ::-1]
