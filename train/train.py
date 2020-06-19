@@ -21,7 +21,7 @@ if config.is_eval:
 else:
     config.save = 'train-{}-{}'.format(config.save, time.strftime("%Y%m%d-%H%M%S"))
 from dataloader import get_train_loader
-from datasets import Cityscapes
+from datasets import Agro
 
 from utils.init_func import init_weight
 from seg_opr.loss_opr import ProbOhemCrossEntropy2d, OhemCELoss
@@ -83,7 +83,7 @@ def main():
                         'test_source': config.test_source,
                         'down_sampling': config.down_sampling}
 
-    train_loader = get_train_loader(config, Cityscapes, test=config.is_test)
+    train_loader = get_train_loader(config, Agro, test=config.is_test)
 
 
     # Model #######################################
@@ -138,11 +138,11 @@ def main():
             state.update(pretrained_dict)
             model.load_state_dict(state)
 
-        evaluator = SegEvaluator(Cityscapes(data_setting, 'val', None), config.num_classes, config.image_mean,
+        evaluator = SegEvaluator(Agro(data_setting, 'val', None), config.num_classes, config.image_mean,
                                  config.image_std, model, config.eval_scale_array, config.eval_flip, 0, out_idx=0, config=config,
                                  verbose=False, save_path=None, show_image=False, show_prediction=False)
         evaluators.append(evaluator)
-        tester = SegTester(Cityscapes(data_setting, 'test', None), config.num_classes, config.image_mean,
+        tester = SegTester(Agro(data_setting, 'test', None), config.num_classes, config.image_mean,
                                  config.image_std, model, config.eval_scale_array, config.eval_flip, 0, out_idx=0, config=config,
                                  verbose=False, save_path=None, show_prediction=False)
         testers.append(tester)
