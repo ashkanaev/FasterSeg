@@ -46,7 +46,7 @@ C.dataset_path = "/media/fdata/ashkanaev/agro"
 C.img_root_folder = C.dataset_path
 C.gt_root_folder = C.dataset_path
 C.train_source = osp.join(C.dataset_path, "train.txt")
-C.train_eval_source = osp.join(C.dataset_path, "val.txt")
+C.train_eval_source = osp.join(C.dataset_path, "train.txt")
 C.eval_source = osp.join(C.dataset_path, "val.txt")
 C.test_source = osp.join(C.dataset_path, "val.txt")
 
@@ -58,15 +58,15 @@ def add_path(path):
 add_path(osp.join(C.root_dir, 'tools'))
 
 """Image Config"""
-C.num_classes = 9
+C.num_classes = 8
 C.background = 0
-C.image_mean = np.array([0.485, 0.456, 0.406])
-C.image_std = np.array([0.229, 0.224, 0.225])
-C.target_size = 512
-C.down_sampling = 1 # first down_sampling then crop ......
+C.image_mean = np.array([0.485, 0.456, 0.406], dtype='float32')
+C.image_std = np.array([0.229, 0.224, 0.225], dtype='float32')
+C.target_size = 1024
+C.down_sampling = (320, 640) # first down_sampling then crop ......
 C.gt_down_sampling = 1
-C.num_train_imgs = 7298
-C.num_eval_imgs = 149
+C.num_train_imgs = 3000
+C.num_eval_imgs = 500
 
 """ Settings for network, this would be different for each kind of model"""
 C.bn_eps = 1e-5
@@ -74,6 +74,8 @@ C.bn_momentum = 0.1
 
 """Train Config"""
 C.lr = 0.01
+C.set_lr = True
+
 C.momentum = 0.9
 C.weight_decay = 5e-4
 C.nepochs = 600
@@ -87,11 +89,35 @@ C.train_scale_array = [0.75, 1, 1.25]
 C.eval_stride_rate = 5 / 6
 C.eval_scale_array = [1, ]
 C.eval_flip = False
-C.eval_base_size = 512
-C.eval_crop_size = 512
-C.eval_height = 512
-C.eval_width = 1024
+C.eval_base_size = 320
+C.eval_crop_size = 320
+C.eval_height = 320
+C.eval_width = 640
 
+"""Augmentation Config"""
+C.aug_prob = 0.95 # set 0 to exclude augmentation
+
+C.hue_saturation_value_prob = 1.0
+C.hue_shift_limit = 5
+C.sat_shift_limit = 45
+C.val_shift_limit = 5
+C.random_sized_crop_prob = 0.5
+C.min_max_height = 0.8
+C.horizontal_flip_prob = 0.5
+C.random_gamma_prob = 0.5
+C.random_contrast_prob = 0.5
+C.random_brightness_prob = 0.5
+C.random_contrast_limit = 0.15
+C.random_brightness_limit = 0.15
+C.one_of_blur_prob = 0.15
+C.motion_blur_prob = 0.1
+C.median_blur_prob = 0.1
+C.median_blur_limit = 1 # type int
+C.blur_prob = 0.1
+C.blur_limit = 1 # type int
+C.clahe_prob = 0.5
+C.clahe_limit = 1 # type int
+C.iaaemboss_prob = 0.5
 
 C.layers = 16
 """ Train Config """
@@ -106,8 +132,8 @@ if C.mode == "teacher":
     C.load_epoch = "last" # "last" or "int" (e.g. "30"): which epoch to load from the searched architecture
     C.batch_size = 12
     C.Fch = 12
-    C.image_height = 512
-    C.image_width = 1024
+    C.image_height = 320
+    C.image_width = 640
     C.save = "%dx%d_teacher_batch%d"%(C.image_height, C.image_width, C.batch_size)
 elif C.mode == "student":
     ##### train student with KL distillation from teacher ##############
@@ -125,6 +151,6 @@ elif C.mode == "student":
     C.save = "%dx%d_student_batch%d"%(C.image_height, C.image_width, C.batch_size)
 
 ########################################
-C.is_test = True # if True, prediction files for the test set will be generated
+C.is_test = False # if True, prediction files for the test set will be generated
 C.is_eval = False # if True, the train.py will only do evaluation for once
-C.eval_path = "fasterseg" # path to pretrained directory to be evaluated
+C.eval_path = "train-512x1024_student_batch12-20200528-022555" # path to pretrained directory to be evaluated

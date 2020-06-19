@@ -25,7 +25,7 @@ from dataloader import get_train_loader
 from datasets import Agro
 
 from utils.init_func import init_weight
-from seg_opr.loss_opr import ProbOhemCrossEntropy2d
+from seg_opr.loss_opr import ProbOhemCrossEntropy2d, OhemCELoss
 from eval import SegEvaluator
 from test import SegTester
 
@@ -44,7 +44,11 @@ except ImportError:
 
 def adjust_learning_rate(base_lr, power, optimizer, epoch, total_epoch):
     for param_group in optimizer.param_groups:
-        param_group['lr'] = param_group['lr'] * power
+        if param_group.get('lr_mul', False) and config.set_lr:
+            param_group['lr'] = param_group['lr'] *power * 10
+            config.set_lr = False
+        else:
+            param_group['lr'] = param_group['lr'] * power
 
 def parse():
 
@@ -119,8 +123,8 @@ def main():
     #     torch.cuda.manual_seed(seed)
 
     # config network and criterion ################
-    min_kept = int(config.batch_size * config.image_height * config.image_width // (16 * config.gt_down_sampling ** 2))
-    ohem_criterion = ProbOhemCrossEntropy2d(ignore_label=255, thresh=0.7, min_kept=min_kept, use_weight=False)
+    min_kept = int(config.batch_size * config.image_height * config.image_width // (16)) # HARD_MOD
+    ohem_criterion = OhemCELoss(ignore_label=255, thresh=0.7, min_kept=min_kept, use_weight=False)
     distill_criterion = nn.KLDivLoss()
 
     # data loader ###########################
@@ -207,11 +211,22 @@ def main():
         base_lr = config.lr
         if arch_idx == 1 or len(config.arch_idx) == 1:
             # optimize teacher solo OR student (w. distill from teacher)
-            optimizer = torch.optim.SGD(model.parameters(), lr=base_lr, momentum=config.momentum, weight_decay=config.weight_decay)
+            wd_params,nowd_params, lr_mul_wd_params, lr_mul_nowd_params = model.get_params()
+            param_list = [
+                {'params': wd_params},
+                {'params': nowd_params, 'weight_decay': 0},
+                {'params': lr_mul_wd_params, 'lr_mul': True},
+                {'params': lr_mul_nowd_params, 'weight_decay': 0, 'lr_mul': True}]
+
+            optimizer = torch.optim.SGD(param_list,
+                                        lr=base_lr,
+                                        momentum=config.momentum,
+                                        weight_decay=config.weight_decay)
         if args.sync_bn:
             import apex
             print("using apex synced BN")
             model = apex.parallel.convert_syncbn_model(model)
+
         models.append(model)
 
     models, optimizer = amp.initialize(models, optimizer,
@@ -250,6 +265,8 @@ def main():
                     else:
                         logger.add_scalar("mIoU/val_student", valid_mIoUs[idx], 0)
                         logging.info("student's valid_mIoU %.3f"%(valid_mIoUs[idx]))
+        exit(0)
+
     tbar = tqdm(range(config.nepochs), ncols=80)
     for epoch in tbar:
         if train_sampler:
@@ -341,12 +358,9 @@ def train(train_loader, models, criterion, distill_criterion, optimizer, logger,
                 loss = loss + lamb * criterion(logits32, target)
                 if len(logits_list) > 1:
                     loss = loss + distill_criterion(F.softmax(logits_list[1], dim=1).log(), F.softmax(logits_list[0], dim=1))
-            # reduced_loss = None
-            # if args.distributed:
-            #     reduced_loss = reduce_tensor(loss.data)
 
-            torch.cuda.synchronize()
-            if step % 10 == 0:
+            # torch.cuda.synchronize()
+            if step % 20 == 0:
                 metrics[idx].update(logits8.data, target)
                 description += "[mIoU%d: %.3f]"%(arch_idx, metrics[idx].get_scores())
         #
