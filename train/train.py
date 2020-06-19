@@ -301,7 +301,7 @@ def main():
                         logging.info("student's valid_mIoU %.3f"%(valid_mIoUs[idx]))
                     save(models[idx], os.path.join(config.save, "weights%d.pt"%arch_idx))
         # test
-        if config.is_test and (epoch+1) >= 250 and (epoch+1) % 10 == 0 and torch.distributed.get_rank() == 0:
+        if config.is_test and (epoch+1) % 10 == 0 and torch.distributed.get_rank() == 0:
             tbar.set_description("[Epoch %d/%d][test...]" % (epoch + 1, config.nepochs))
             with torch.no_grad():
                 test(epoch, models, testers, logger)
@@ -385,7 +385,7 @@ def infer(models, evaluators, logger):
 
 def test(epoch, models, testers, logger):
     for idx, arch_idx in enumerate(config.arch_idx):
-        if arch_idx == 0: continue
+        # if arch_idx == 0: continue
         model = models[idx]
         tester = testers[idx]
         os.system("mkdir %s"%os.path.join(os.path.join(os.path.realpath('.'), config.save, "test")))
