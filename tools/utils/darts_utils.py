@@ -118,20 +118,13 @@ try:
 
 
     def build_engine(model_file):
-        TRT_LOGGER = trt.Logger()
-        with open("sample.engine", "rb") as f, trt.Runtime(TRT_LOGGER) as runtime:
-            return runtime.deserialize_cuda_engine(f.read())
+        with trt.Builder(TRT_LOGGER) as builder, builder.create_network() as network, trt.OnnxParser(network, TRT_LOGGER) as parser:
+            builder.max_workspace_size = MAX_WORKSPACE_SIZE
+            builder.max_batch_size = MAX_BATCH_SIZE
 
-        builder = trt.Builder(TRT_LOGGER)
-        network = builder.create_network()
-        parser = trt.OnnxParser(network, TRT_LOGGER)
-        # with trt.Builder(TRT_LOGGER) as builder, builder.create_network() as network, trt.OnnxParser(network, TRT_LOGGER) as parser:
-        builder.max_workspace_size = MAX_WORKSPACE_SIZE
-        builder.max_batch_size = MAX_BATCH_SIZE
-
-        # with open(model_file, 'rb') as model:
-        #     parser.parse(model.read())
-        #     return builder.build_cuda_engine(network)
+            with open(model_file, 'rb') as model:
+                parser.parse(model.read())
+                return builder.build_cuda_engine(network)
 
 
     def load_input(input_size, host_buffer):
@@ -170,13 +163,6 @@ try:
 
 
     def compute_latency_ms_tensorrt(model, input_size, iterations=None):
-        partial = torch.load('/media/ashkanaev/DATA/DEVREP/autoseg11/fasterseg/latency/fasterseg/weights1.pt')
-        state = model.state_dict()
-        pretrained_dict = {k: v for k, v in partial.items() if k in state}
-        state.update(pretrained_dict)
-        model.load_state_dict(state)
-        torch.save(model, "model.torch.pth")
-        # model2 = torch.load("model.torch")
         model = model.cuda()
         model.eval()
         _, c, h, w = input_size

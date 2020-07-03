@@ -21,10 +21,10 @@ if config.is_eval:
 else:
     config.save = 'train-{}-{}'.format(config.save, time.strftime("%Y%m%d-%H%M%S"))
 from dataloader import get_train_loader
-from datasets import Cityscapes
+from datasets import Agro
 
 from utils.init_func import init_weight
-from seg_opr.loss_opr import ProbOhemCrossEntropy2d
+from seg_opr.loss_opr import OhemCELoss
 from eval import SegEvaluator
 from test import SegTester
 
@@ -36,7 +36,11 @@ import seg_metrics
 
 def adjust_learning_rate(base_lr, power, optimizer, epoch, total_epoch):
     for param_group in optimizer.param_groups:
-        param_group['lr'] = param_group['lr'] * power
+        if param_group.get('lr_mul', False) and config.set_lr:
+            param_group['lr'] = param_group['lr'] * power * 10
+            config.set_lr = False
+        else:
+            param_group['lr'] = param_group['lr'] * power
 
 
 def main():
@@ -60,7 +64,8 @@ def main():
 
     # config network and criterion ################
     min_kept = int(config.batch_size * config.image_height * config.image_width // (16 * config.gt_down_sampling ** 2))
-    ohem_criterion = ProbOhemCrossEntropy2d(ignore_label=255, thresh=0.7, min_kept=min_kept, use_weight=False)
+    ohem_criterion = OhemCELoss(ignore_label=255, thresh=0.7, min_kept=min_kept, use_weight=False)
+    # ohem_criterion = ProbOhemCrossEntropy2d(ignore_label=255, thresh=0.7, min_kept=min_kept, use_weight=False)
     distill_criterion = nn.KLDivLoss()
 
     # data loader ###########################
@@ -79,7 +84,7 @@ def main():
                         'test_source': config.test_source,
                         'down_sampling': config.down_sampling}
 
-    train_loader = get_train_loader(config, Cityscapes, test=config.is_test)
+    train_loader = get_train_loader(config, Agro, test=config.is_test)
 
 
     # Model #######################################
@@ -113,7 +118,7 @@ def main():
                 plot_op(getattr(model, "ops%d"%b), getattr(model, "path%d"%b), F_base=config.Fch).savefig(os.path.join(config.save, "ops_%d_%d.png"%(arch_idx,b)), bbox_inches="tight")
         plot_path_width(model.lasts, model.paths, model.widths).savefig(os.path.join(config.save, "path_width%d.png"%arch_idx))
         plot_path_width([2, 1, 0], [model.path2, model.path1, model.path0], [model.widths2, model.widths1, model.widths0]).savefig(os.path.join(config.save, "path_width_all%d.png"%arch_idx))
-        flops, params = profile(model, inputs=(torch.randn(1, 3, 1024, 2048),), verbose=False)
+        flops, params = profile(model, inputs=(torch.randn(1, 3, 320, 640),), verbose=False)
         logging.info("params = %fMB, FLOPs = %fGB", params / 1e6, flops / 1e9)
         logging.info("ops:" + str(model.ops))
         logging.info("path:" + str(model.paths))
@@ -121,37 +126,43 @@ def main():
         model = model.cuda()
         init_weight(model, nn.init.kaiming_normal_, torch.nn.BatchNorm2d, config.bn_eps, config.bn_momentum, mode='fan_in', nonlinearity='relu')
 
-        if arch_idx == 0 and len(config.arch_idx) > 1:
+        if arch_idx == 0 and len(config.arch_idx) > 1 and config.load_w:
             partial = torch.load(os.path.join(config.teacher_path, "weights%d.pt"%arch_idx))
             state = model.state_dict()
             pretrained_dict = {k: v for k, v in partial.items() if k in state}
             state.update(pretrained_dict)
             model.load_state_dict(state)
-        elif config.is_eval:
+        elif config.is_eval and config.load_w:
             partial = torch.load(os.path.join(config.eval_path, "weights%d.pt"%arch_idx))
             state = model.state_dict()
             pretrained_dict = {k: v for k, v in partial.items() if k in state}
             state.update(pretrained_dict)
             model.load_state_dict(state)
 
-        evaluator = SegEvaluator(Cityscapes(data_setting, 'val', None), config.num_classes, config.image_mean,
+        evaluator = SegEvaluator(Agro(data_setting, 'val', None), config.num_classes, config.image_mean,
                                  config.image_std, model, config.eval_scale_array, config.eval_flip, 0, out_idx=0, config=config,
-                                 verbose=False, save_path=None, show_image=False, show_prediction=False)
+                                 verbose=False, save_path=None, show_image=False, show_prediction=True)
         evaluators.append(evaluator)
-        tester = SegTester(Cityscapes(data_setting, 'test', None), config.num_classes, config.image_mean,
+        tester = SegTester(Agro(data_setting, 'test', None), config.num_classes, config.image_mean,
                                  config.image_std, model, config.eval_scale_array, config.eval_flip, 0, out_idx=0, config=config,
-                                 verbose=False, save_path=None, show_prediction=False)
+                                 verbose=False,  save_path=None, show_prediction=True)
         testers.append(tester)
 
         # Optimizer ###################################
         base_lr = config.lr
         if arch_idx == 1 or len(config.arch_idx) == 1:
             # optimize teacher solo OR student (w. distill from teacher)
-            optimizer = torch.optim.SGD(model.parameters(), lr=base_lr, momentum=config.momentum, weight_decay=config.weight_decay)
+            wd_params, nowd_params, lr_mul_wd_params, lr_mul_nowd_params = model.get_params()
+            param_list = [
+                {'params': wd_params},
+                {'params': nowd_params, 'weight_decay': 0},
+                {'params': lr_mul_wd_params, 'lr_mul': True},
+                {'params': lr_mul_nowd_params, 'weight_decay': 0, 'lr_mul': True}]
+            optimizer = torch.optim.SGD(param_list, lr=base_lr, momentum=config.momentum, weight_decay=config.weight_decay)
         models.append(model)
 
 
-    # Cityscapes ###########################################
+    # Agro ###########################################
     if config.is_eval:
         logging.info(config.load_path)
         logging.info(config.eval_path)
@@ -194,7 +205,7 @@ def main():
         adjust_learning_rate(base_lr, 0.992, optimizer, epoch+1, config.nepochs)
 
         # validation
-        if not config.is_test and ((epoch+1) % 10 == 0 or epoch == 0):
+        if  ((epoch+1) % 10 == 0 or epoch == 0):
             tbar.set_description("[Epoch %d/%d][validation...]" % (epoch + 1, config.nepochs))
             with torch.no_grad():
                 valid_mIoUs = infer(models, evaluators, logger)
@@ -207,7 +218,7 @@ def main():
                         logging.info("student's valid_mIoU %.3f"%(valid_mIoUs[idx]))
                     save(models[idx], os.path.join(config.save, "weights%d.pt"%arch_idx))
         # test
-        if config.is_test and (epoch+1) >= 250 and (epoch+1) % 10 == 0:
+        if config.is_test and (epoch+1) % 30 == 0:
             tbar.set_description("[Epoch %d/%d][test...]" % (epoch + 1, config.nepochs))
             with torch.no_grad():
                 test(epoch, models, testers, logger)
@@ -258,12 +269,10 @@ def train(train_loader, models, criterion, distill_criterion, optimizer, logger,
                 loss = loss + lamb * criterion(logits32, target)
                 if len(logits_list) > 1:
                     loss = loss + distill_criterion(F.softmax(logits_list[1], dim=1).log(), F.softmax(logits_list[0], dim=1))
-
-            # torch.cuda.synchronize()
             if step % 20 == 0:
                 metrics[idx].update(logits8.data, target)
                 description += "[mIoU%d: %.3f]"%(arch_idx, metrics[idx].get_scores())
-        #
+
         pbar.set_description("[Step %d/%d]"%(step + 1, len(train_loader)) + description)
         logger.add_scalar('loss/train', loss+loss_kl, epoch*len(pbar)+step)
 
@@ -277,7 +286,7 @@ def infer(models, evaluators, logger):
     mIoUs = []
     for model, evaluator in zip(models, evaluators):
         model.eval()
-        # _, mIoU = evaluator.run_online()
+       # _, mIoU = evaluator.run_online()
         _, mIoU = evaluator.run_online_multiprocess()
         mIoUs.append(mIoU)
     return mIoUs
